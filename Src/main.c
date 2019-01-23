@@ -53,10 +53,11 @@ TIM_HandleTypeDef htim3;
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
 volatile _Bool flag =0;
-int peso=128; //representacion de 500g que se lee en la pesa
+volatile _Bool llenar;
+volatile int peso; //peso medido 
 uint32_t ADC_val;
-int duty_agua = 0;					
-int duty_comi = 0;
+int duty_agua;					
+int duty_comida;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -81,6 +82,63 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		if (GPIO_Pin==GPIO_PIN_0){ 
 			flag = !flag;
 		}
+}
+
+// Funcion que despliega segun un codigo de color el peso en gramos y retorna un bool que indica si hay que dejar de llenar
+// LED_ROJO peso < 200g Necesita llenar comida
+// LED_AMARILLO peso>=200g and peso<=500g Comida en estado aceptable
+// LED_VERDE peso < 500g El peso es adecuado dejar de llenar
+// 
+_Bool display(int peso){
+		_Bool flag_i=0;
+		if (peso<200){
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
+		}
+		else if(peso>=200 && peso<=500){
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
+		}
+		else if (peso>500){
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);
+			flag_i = 1;
+		}
+		return flag_i;
+}
+
+//Codig que inicializa perifericos
+void inicializar(){
+	HAL_ADC_Start(&hadc1); //encender ADC
+	//HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1); //encender servo 1
+	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1); //encender servo 2
+}
+
+// Codigo que se asegura de apagar el equipo y colocarlo en posicion inicial.
+void apagar(){
+	while (duty_agua>0){
+		duty_agua-=25;
+		htim1.Instance->CCR1=duty_agua; //vuelve la valvula de agua a posicion cerrada
+		HAL_Delay(500);
+	}
+	while (duty_comida>0){
+		duty_agua-=25;
+		htim3.Instance->CCR1=duty_agua; //vuelve la valvula de comida a posicion cerrada
+		HAL_Delay(500);
+	}
+	duty_agua = 0;
+	duty_comida = 0;
+	ADC_val = 0;
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET); //Apaga LED e indica que no esta encendido el aparato
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET); //Apaga LED de se necesita comida
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET); //Apaga LED de comida llena
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET); //Apaga LED de se necesita agua
+	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1); //apagar servo 1
+	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1); //apagar servo 2
+	HAL_ADC_Stop(&hadc1);//apagar ADC
 }
 /* USER CODE END 0 */
 
@@ -118,53 +176,38 @@ int main(void)
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
 	
-	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1); // Incializacion del PWM servo 2
 	
   /* USER CODE END 2 */
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-		if (flag){ 			
+		while (flag){ 			
+			inicializar();
 			// LED AZUL Funcionando
 			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_SET);
-			HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1); // Incializacion del PWM servo 1
 			// lectura del ADC
-			HAL_ADC_Start(&hadc1);
-			while (ADC_val<=peso){ //apertura de la valvula de comida hasta que el peso se obtenga
-				if(HAL_ADC_PollForConversion(&hadc1,500)==HAL_OK){
-						ADC_val=HAL_ADC_GetValue(&hadc1); //guarda el valor de lectura del ADC
-						htim3.Instance->CCR1=125;			
-				}
-				HAL_ADC_Stop(&hadc1);
-				htim1.Instance->CCR1=0; //vuelve la valvula a posicion cerrada
-				HAL_Delay(1000);
-				HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
+			if(HAL_ADC_PollForConversion(&hadc1,1000)==HAL_OK){
+				ADC_val=HAL_ADC_GetValue(&hadc1); //guarda el valor de lectura del ADC
+				peso = ADC_val*(1000/255); //guarda el valor en gramos del peso medido redondeo hacia unidad menor 
+				llenar=display(peso); //devuelve un valor para determinar si se debe seguir llenando la comida
 			}
-		}
-		else{
-			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET); //Apaga LED
-		}
-	
-			
-			
-			
-			// codigo que muece los servomotores 180° variando el duty cycle
-			
-			
+			if (llenar && duty_comida<=200){ //Se activa el servomotor que abre la valvula de comida
+//				htim3.Instance->CCR1+=50; 
+				duty_comida+=50;
+				__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,duty_comida);
+				HAL_Delay(1000);
+			}
+			while (!llenar && duty_comida>0){
+				duty_comida-=50;
+				//htim3.Instance->CCR1=duty_comida; //vuelve la valvula a posicion cerrada
+				__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,duty_comida);
+				HAL_Delay(1000);
+			}
+			HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
+			}
+		apagar();
 		/* USER CODE END WHILE */
-//			while (duty_agua <= 20){
-//				htim1.Instance->CCR1=duty_agua;
-//				duty_agua += 1;
-//				HAL_Delay(100);
-//			}
-//			HAL_Delay(1000);
-//			while (duty_comi <= 125){
-//				htim3.Instance->CCR1=duty_comi;
-//				duty_comi += 1;
-//				HAL_Delay(100);
-//			}
-//			HAL_Delay(1000);
 		
   /* USER CODE BEGIN 3 */
 }
