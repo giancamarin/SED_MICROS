@@ -1,0 +1,26 @@
+--cpu=Cortex-M4.fp
+"proyectomicros\startup_stm32f407xx.o"
+"proyectomicros\main.o"
+"proyectomicros\stm32f4xx_it.o"
+"proyectomicros\stm32f4xx_hal_msp.o"
+"proyectomicros\stm32f4xx_hal_adc.o"
+"proyectomicros\stm32f4xx_hal_adc_ex.o"
+"proyectomicros\stm32f4xx_hal_tim.o"
+"proyectomicros\stm32f4xx_hal_tim_ex.o"
+"proyectomicros\stm32f4xx_hal_rcc.o"
+"proyectomicros\stm32f4xx_hal_rcc_ex.o"
+"proyectomicros\stm32f4xx_hal_flash.o"
+"proyectomicros\stm32f4xx_hal_flash_ex.o"
+"proyectomicros\stm32f4xx_hal_flash_ramfunc.o"
+"proyectomicros\stm32f4xx_hal_gpio.o"
+"proyectomicros\stm32f4xx_hal_dma_ex.o"
+"proyectomicros\stm32f4xx_hal_dma.o"
+"proyectomicros\stm32f4xx_hal_pwr.o"
+"proyectomicros\stm32f4xx_hal_pwr_ex.o"
+"proyectomicros\stm32f4xx_hal_cortex.o"
+"proyectomicros\stm32f4xx_hal.o"
+"proyectomicros\system_stm32f4xx.o"
+--library_type=microlib --strict --scatter "ProyectoMicros\ProyectoMicros.sct"
+--summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
+--info sizes --info totals --info unused --info veneers
+--list "ProyectoMicros.map" -o ProyectoMicros\ProyectoMicros.axf
