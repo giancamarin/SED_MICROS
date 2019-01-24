@@ -62,6 +62,10 @@ volatile _Bool llenar=0; //Bool que indica si se debe llenar comida
 volatile _Bool llenar_agua=0; //Bool que indica si se debe llenar agua
 volatile _Bool inicializado=0; //Flag que indica que los perifericos se inicializaron
 volatile short int nivel=0; //Valor que indica el nivel del agua 0:Vacio (<10%) 1:Llenado a medias (10<nivel<70) 2:Lleno (70>)
+volatile short int wd_cntr_agua=0; //contador del watchdog de apertura de comida
+volatile short int wd_cntr_comida=0; //contador del watchdog de apertura de agua
+volatile _Bool wd_agua=0; //Flag que indica que el watchdog de agua esta activo
+volatile _Bool wd_comida=0; //Flag que indica que el watchdog de comida esta activo
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -104,6 +108,7 @@ void inicializar(){
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_SET);   //Enciende el LED de funcionando
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);   //Apaga el LED de paro
 	HAL_ADC_Start(&hadc1); //encender ADC
+	HAL_TIM_Base_Start_IT(&htim2); //encender temporizador 2 para el watchdog
 	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1); //encender servo 1
 	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1); //encender servo 2
 	inicializado=1;
@@ -111,14 +116,16 @@ void inicializar(){
 
 // Codigo que se asegura de apagar el equipo y colocarlo en posicion inicial.
 void paro(){
-	//cerrar_valvula(1);
-	//cerrar_valvula(0);
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET); //Apaga LED e indica que no esta encendido el aparato
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);   //Enciende el LED de paro
 	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1); //apagar servo 1
 	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1); //apagar servo 2
 	HAL_ADC_Stop(&hadc1);//apagar ADC
 	inicializado = 0;
+	wd_cntr_agua=0;
+	wd_cntr_comida=0;
+	wd_agua=0;
+	wd_comida=0;
 }
 
 /* Funcion que indica si hay que dejar de llenar la comida
@@ -226,19 +233,26 @@ int main(void)
 				HAL_ADC_Stop(&hadc1);
 			}
 			if (llenar){ // Si el peso es menor a 200g abrir valvula de comida
-				//watchdog_comida();
+				wd_comida = 1;
 				__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,100);
 			}
 			else if (!llenar){ // Si el peso es mayor a 500g cerrar valvula de comida
 				__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,50);
+				wd_comida = 0;
+				wd_cntr_comida = 0;
 			}
 			llenar_agua=comprobar_nivel(nivel,llenar_agua);
 			if (llenar_agua){ // Si el nivel es menor al 10% abrir valvula de agua
-				//watchdog_agua();
+				wd_agua = 1;
 				__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,100);
 			}
 			else if (!llenar_agua){ // Si el nivel es mayor al 70% cerrar valvula de agua
 				__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,50);
+				wd_agua = 0;
+				wd_cntr_agua = 0;
+			}
+			if (wd_cntr_agua > 5 || wd_cntr_comida > 10){ //condicion de paro de emergencia por error en el sistema trigger por watchdog
+				start=0;
 			}
 		}
 		if (inicializado){
@@ -579,7 +593,24 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+/**
+  * @brief  Period elapsed callback in non blocking mode
+  * @param  htim: TIM handle
+  * @retval None
+  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if (htim->Instance == htim2.Instance)
+    {
+        /* Aumenta 1 al watchdog */
+        if (wd_comida){
+					wd_cntr_comida++;
+				}
+				else if (wd_agua){
+					wd_cntr_agua++;
+				}
+    }
+}
 /* USER CODE END 4 */
 
 /**
