@@ -66,6 +66,7 @@ volatile short int wd_cntr_agua=0; //contador del watchdog de apertura de comida
 volatile short int wd_cntr_comida=0; //contador del watchdog de apertura de agua
 volatile _Bool wd_agua=0; //Flag que indica que el watchdog de agua esta activo
 volatile _Bool wd_comida=0; //Flag que indica que el watchdog de comida esta activo
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -87,7 +88,7 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
-// Interrupcion de la linea 1 pin 0. Arranque del sistemas
+// Interrupcion de pin 0, 7 y 10.
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		// Interrupcion que inicializa la maquina ON/OFF con el push button
 		if (GPIO_Pin==GPIO_PIN_0){ 
@@ -98,12 +99,12 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 			nivel = 5;
 		}
 		// Interrupcion que indica sensor lleno
-		else if (GPIO_Pin==GPIO_PIN_6){ 
+		else if (GPIO_Pin==GPIO_PIN_10){ 
 			nivel = 80;
 		}
 }
 
-//Codig que inicializa perifericos
+// Funcion que inicializa perifericos
 void inicializar(){
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_SET);   //Enciende el LED de funcionando
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);   //Apaga el LED de paro
@@ -114,11 +115,23 @@ void inicializar(){
 	inicializado=1;
 }
 
-// Codigo que se asegura de apagar el equipo y colocarlo en posicion inicial.
+// Funcion que se asegura el paro del equipo y colocarlo en posicion inicial.
 void paro(){
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET); //Apaga LED e indica que no esta encendido el aparato
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);   //Enciende el LED de paro
 	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1); //apagar servo 1
+	HAL_TIM_Base_Stop_IT(&htim2); //apagar timer 2
+	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1); //apagar servo 2
+	HAL_ADC_Stop(&hadc1);//apagar ADC
+	inicializado = 0;
+}
+
+// Funcion que realiza el reset por trigger de algun fallo del sistema y lo coloca en posicion inicial.
+void error(){
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET); //Apaga LED e indica que no esta encendido el aparato
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);   //Enciende el LED de paro
+	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1); //apagar servo 1
+	HAL_TIM_Base_Stop_IT(&htim2); //apagar timer 2
 	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1); //apagar servo 2
 	HAL_ADC_Stop(&hadc1);//apagar ADC
 	inicializado = 0;
@@ -210,7 +223,7 @@ int main(void)
   MX_TIM6_Init();
   MX_TIM14_Init();
   /* USER CODE BEGIN 2 */
-	//HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1); //encender servo 2
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -253,6 +266,7 @@ int main(void)
 			}
 			if (wd_cntr_agua > 5 || wd_cntr_comida > 10){ //condicion de paro de emergencia por error en el sistema trigger por watchdog
 				start=0;
+				error();
 			}
 		}
 		if (inicializado){
@@ -544,13 +558,13 @@ static void MX_GPIO_Init(void)
                           |D1_Pin|D2_Pin|D3_Pin|D4_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, LED_PARO_Pin|GPIO_PIN_14|LED_FUNCIONAMIENTO_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOD, LED_PARO_Pin|LED_FUNCIONAMIENTO_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : USER_BOTTON_Pin */
-  GPIO_InitStruct.Pin = USER_BOTTON_Pin;
+  /*Configure GPIO pins : USER_BOTTON_Pin PA10 */
+  GPIO_InitStruct.Pin = USER_BOTTON_Pin|GPIO_PIN_10;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(USER_BOTTON_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pins : FALTA_COMIDA_Pin COMIDA_LLENA_Pin FALTA_AGUA_Pin AGUA_LLENA_Pin */
   GPIO_InitStruct.Pin = FALTA_COMIDA_Pin|COMIDA_LLENA_Pin|FALTA_AGUA_Pin|AGUA_LLENA_Pin;
@@ -570,18 +584,18 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LED_PARO_Pin PD14 LED_FUNCIONAMIENTO_Pin */
-  GPIO_InitStruct.Pin = LED_PARO_Pin|GPIO_PIN_14|LED_FUNCIONAMIENTO_Pin;
+  /*Configure GPIO pins : LED_PARO_Pin LED_FUNCIONAMIENTO_Pin */
+  GPIO_InitStruct.Pin = LED_PARO_Pin|LED_FUNCIONAMIENTO_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : SENSOR_LLENO_Pin SENSOR_VACIO_Pin */
-  GPIO_InitStruct.Pin = SENSOR_LLENO_Pin|SENSOR_VACIO_Pin;
+  /*Configure GPIO pin : SENSOR_VACIO_Pin */
+  GPIO_InitStruct.Pin = SENSOR_VACIO_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+  HAL_GPIO_Init(SENSOR_VACIO_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
@@ -589,6 +603,9 @@ static void MX_GPIO_Init(void)
 
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 }
 
@@ -611,6 +628,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 				}
     }
 }
+
 /* USER CODE END 4 */
 
 /**

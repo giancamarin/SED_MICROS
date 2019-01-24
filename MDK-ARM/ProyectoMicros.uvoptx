@@ -153,12 +153,12 @@
         <Ww>
           <count>0</count>
           <WinNumber>1</WinNumber>
-          <ItemText>start</ItemText>
+          <ItemText>wd_cntr_agua</ItemText>
         </Ww>
         <Ww>
           <count>1</count>
           <WinNumber>1</WinNumber>
-          <ItemText>peso</ItemText>
+          <ItemText>wd_cntr_comida</ItemText>
         </Ww>
         <Ww>
           <count>2</count>
