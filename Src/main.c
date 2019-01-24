@@ -67,6 +67,10 @@ volatile short int wd_cntr_comida=0; //contador del watchdog de apertura de agua
 volatile _Bool wd_agua=0; //Flag que indica que el watchdog de agua esta activo
 volatile _Bool wd_comida=0; //Flag que indica que el watchdog de comida esta activo
 
+//----- 7 SEG DISPLAY ------
+//GPIOB->ODR=0xFFFF;
+uint16_t lables[11]={0xFC00,0x1800,0x6C08,0x3C08,0x9808,0xB408,0xF408,0x1C00,0xFC08,0xBC08,0xE408};
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -129,7 +133,12 @@ void paro(){
 // Funcion que realiza el reset por trigger de algun fallo del sistema y lo coloca en posicion inicial.
 void error(){
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET); //Apaga LED e indica que no esta encendido el aparato
-	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);   //Enciende el LED de paro
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET); //Apaga el LED de paro
+	// Apaga los indicadores de comida y agua
+	HAL_GPIO_WritePin(GPIOE, GPIO_PIN_11, GPIO_PIN_RESET);   
+	HAL_GPIO_WritePin(GPIOE, GPIO_PIN_12, GPIO_PIN_RESET);   
+	HAL_GPIO_WritePin(GPIOE, GPIO_PIN_13, GPIO_PIN_RESET);   
+	HAL_GPIO_WritePin(GPIOE, GPIO_PIN_14, GPIO_PIN_RESET);   
 	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1); //apagar servo 1
 	HAL_TIM_Base_Stop_IT(&htim2); //apagar timer 2
 	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1); //apagar servo 2
@@ -264,8 +273,9 @@ int main(void)
 				wd_agua = 0;
 				wd_cntr_agua = 0;
 			}
-			if (wd_cntr_agua > 5 || wd_cntr_comida > 10){ //condicion de paro de emergencia por error en el sistema trigger por watchdog
+			if (wd_cntr_agua > 10 || wd_cntr_comida > 10){ //condicion de paro de emergencia por error en el sistema trigger por watchdog
 				start=0;
+				//GPIOB->ODR=lables[10];
 				error();
 			}
 		}
@@ -619,6 +629,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance == htim2.Instance)
     {
+				//Despliega el watchdog de comida en el display a 7 segmentos
+				GPIOB->ODR=lables[wd_cntr_comida];
         /* Aumenta 1 al watchdog */
         if (wd_comida){
 					wd_cntr_comida++;
@@ -673,3 +685,4 @@ void assert_failed(uint8_t* file, uint32_t line)
   */
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
+
