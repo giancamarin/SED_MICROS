@@ -55,9 +55,10 @@ TIM_HandleTypeDef htim14;
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-volatile _Bool start=0;
-volatile uint32_t ADC_val;
-volatile int peso;
+volatile _Bool start=0; //Inicializar la maquina ON/OFF
+volatile uint32_t ADC_val; //lectura del ADC del sensor de peso
+volatile int peso;			//variable global que indica el peso entre 0 y 1000g
+volatile _Bool llenar=0; //Bool que indica si se debe llenar comida
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -85,6 +86,29 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 			start = !start;
 		}
 }
+
+/* Funcion que indica si hay que dejar de llenar la comida
+	LED_ROJO peso < 200g Necesita llenar comida
+	LED_VERDE peso > 500g El peso es adecuado dejar de llenar
+*/ 
+_Bool llenar_comida(int peso_i, _Bool flag_i){
+	if (peso_i<200){
+		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_11, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_12, GPIO_PIN_RESET);
+		flag_i=1;
+	}
+	else if(peso_i>=200 && peso<=500){
+		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_11, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_12, GPIO_PIN_RESET);
+	}
+	else if (peso_i>500){
+		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_12, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_11, GPIO_PIN_RESET);
+		flag_i = 0;
+	}
+	return flag_i;
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -139,13 +163,13 @@ HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1); //encender servo 2
 			if(HAL_ADC_PollForConversion(&hadc1,500)==HAL_OK){ //Lectura de valores
 				ADC_val=HAL_ADC_GetValue(&hadc1);
 				peso = ADC_val*(1000/255); // Escalar el valor al rango de lectura de 0-1000g
+				llenar=llenar_comida(peso,llenar);
 				HAL_ADC_Stop(&hadc1);
 			}
-			
-			if (peso<200){ // Si el peso es menor a 200g abrir valvula de comida
+			if (llenar){ // Si el peso es menor a 200g abrir valvula de comida
 				__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,100);
 			}
-			else if (peso>500){ // Si el peso es mayor a 500g cerrar valvula de comida
+			else if (!llenar){ // Si el peso es mayor a 500g cerrar valvula de comida
 				__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,50);
 			}
 		}
