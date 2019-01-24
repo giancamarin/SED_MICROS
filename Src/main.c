@@ -59,6 +59,7 @@ volatile _Bool start=0; //Inicializar la maquina ON/OFF
 volatile uint32_t ADC_val; //lectura del ADC del sensor de peso
 volatile int peso;			//variable global que indica el peso entre 0 y 1000g
 volatile _Bool llenar=0; //Bool que indica si se debe llenar comida
+volatile _Bool inicializado=0; //Flag que indica que los perifericos se inicializaron
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -85,6 +86,28 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		if (GPIO_Pin==GPIO_PIN_0){ 
 			start = !start;
 		}
+}
+
+//Codig que inicializa perifericos
+void inicializar(){
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_SET);   //Enciende el LED de funcionando
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);   //Apaga el LED de paro
+	HAL_ADC_Start(&hadc1); //encender ADC
+	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1); //encender servo 1
+	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1); //encender servo 2
+	inicializado=1;
+}
+
+// Codigo que se asegura de apagar el equipo y colocarlo en posicion inicial.
+void paro(){
+	//cerrar_valvula(1);
+	//cerrar_valvula(0);
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET); //Apaga LED e indica que no esta encendido el aparato
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);   //Enciende el LED de paro
+	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1); //apagar servo 1
+	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1); //apagar servo 2
+	HAL_ADC_Stop(&hadc1);//apagar ADC
+	inicializado = 0;
 }
 
 /* Funcion que indica si hay que dejar de llenar la comida
@@ -147,7 +170,7 @@ int main(void)
   MX_TIM6_Init();
   MX_TIM14_Init();
   /* USER CODE BEGIN 2 */
-HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1); //encender servo 2
+	//HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1); //encender servo 2
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -159,6 +182,9 @@ HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1); //encender servo 2
 
   /* USER CODE BEGIN 3 */
 		while(start){
+			if (!inicializado){
+				inicializar();
+			}
 			HAL_ADC_Start(&hadc1); //Inicializar ADC
 			if(HAL_ADC_PollForConversion(&hadc1,500)==HAL_OK){ //Lectura de valores
 				ADC_val=HAL_ADC_GetValue(&hadc1);
@@ -172,6 +198,9 @@ HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1); //encender servo 2
 			else if (!llenar){ // Si el peso es mayor a 500g cerrar valvula de comida
 				__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,50);
 			}
+		}
+		if (inicializado){
+			paro();
 		}
   }
   /* USER CODE END 3 */
