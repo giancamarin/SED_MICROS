@@ -68,7 +68,6 @@ volatile _Bool wd_agua=0; //Flag que indica que el watchdog de agua esta activo
 volatile _Bool wd_comida=0; //Flag que indica que el watchdog de comida esta activo
 
 //----- 7 SEG DISPLAY ------
-//GPIOB->ODR=0xFFFF;
 uint16_t lables[11]={0xFC00,0x1800,0x6C08,0x3C08,0x9808,0xB408,0xF408,0x1C00,0xFC08,0xBC08,0xE408};
 
 /* USER CODE END PV */
@@ -99,13 +98,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 			start = !start;
 		}
 		// Interrupcion que indica sensor vacio
-		else if (GPIO_Pin==GPIO_PIN_7){ 
-			nivel = 5;
-		}
+		//else if (GPIO_Pin==GPIO_PIN_7){ 
+		//	nivel = 5;
+		//}
 		// Interrupcion que indica sensor lleno
-		else if (GPIO_Pin==GPIO_PIN_10){ 
-			nivel = 80;
-		}
+		//else if (GPIO_Pin==GPIO_PIN_10){ 
+		//	nivel = 80;
+		//}
 }
 
 // Funcion que inicializa perifericos
@@ -177,7 +176,7 @@ _Bool llenar_comida(int peso_i, _Bool flag_i){
 	LED_AZUL nivel > 70% El nivel es adecuado dejar de llenar
 */ 
 _Bool comprobar_nivel(short int nivel_i, _Bool flag_i){
-	if (nivel_i<10){
+	if (<10){
 		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_13, GPIO_PIN_SET);
 		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_14, GPIO_PIN_RESET);
 		flag_i=1;
@@ -275,7 +274,6 @@ int main(void)
 			}
 			if (wd_cntr_agua > 10 || wd_cntr_comida > 10){ //condicion de paro de emergencia por error en el sistema trigger por watchdog
 				start=0;
-				//GPIOB->ODR=lables[10];
 				error();
 			}
 		}
@@ -637,6 +635,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 				}
 				else if (wd_agua){
 					wd_cntr_agua++;
+				}
+				// Determina nivel
+				if (HAL_GPIO_ReadPin(GPIOA,GPIO_PIN_10)){
+					nivel = 80;
+				}
+				else if(HAL_GPIO_ReadPin(GPIOC,GPIO_PIN_7)){
+					nivel = 5;
 				}
     }
 }
