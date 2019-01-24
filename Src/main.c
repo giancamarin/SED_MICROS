@@ -59,7 +59,9 @@ volatile _Bool start=0; //Inicializar la maquina ON/OFF
 volatile uint32_t ADC_val; //lectura del ADC del sensor de peso
 volatile int peso;			//variable global que indica el peso entre 0 y 1000g
 volatile _Bool llenar=0; //Bool que indica si se debe llenar comida
+volatile _Bool llenar_agua=0; //Bool que indica si se debe llenar agua
 volatile _Bool inicializado=0; //Flag que indica que los perifericos se inicializaron
+volatile short int nivel=0; //Valor que indica el nivel del agua 0:Vacio (<10%) 1:Llenado a medias (10<nivel<70) 2:Lleno (70>)
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -81,10 +83,19 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
+// Interrupcion de la linea 1 pin 0. Arranque del sistemas
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		// Interrupcion que inicializa la maquina ON/OFF con el push button
 		if (GPIO_Pin==GPIO_PIN_0){ 
 			start = !start;
+		}
+		// Interrupcion que indica sensor vacio
+		else if (GPIO_Pin==GPIO_PIN_7){ 
+			nivel = 5;
+		}
+		// Interrupcion que indica sensor lleno
+		else if (GPIO_Pin==GPIO_PIN_6){ 
+			nivel = 80;
 		}
 }
 
@@ -127,6 +138,28 @@ _Bool llenar_comida(int peso_i, _Bool flag_i){
 	else if (peso_i>500){
 		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_12, GPIO_PIN_SET);
 		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_11, GPIO_PIN_RESET);
+		flag_i = 0;
+	}
+	return flag_i;
+}
+
+/* Funcion que indica si hay que llenar el depsoito de agua
+	LED_AMARILLO nivel < 10% Necesita llenar agua
+	LED_AZUL nivel > 70% El nivel es adecuado dejar de llenar
+*/ 
+_Bool comprobar_nivel(short int nivel_i, _Bool flag_i){
+	if (nivel_i<10){
+		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_13, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_14, GPIO_PIN_RESET);
+		flag_i=1;
+	}
+	else if(nivel_i>=10 && nivel_i<=70){
+		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_13, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_14, GPIO_PIN_RESET);
+	}
+	else if (nivel_i>70){
+		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_14, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_13, GPIO_PIN_RESET);
 		flag_i = 0;
 	}
 	return flag_i;
@@ -185,7 +218,7 @@ int main(void)
 			if (!inicializado){
 				inicializar();
 			}
-			HAL_ADC_Start(&hadc1); //Inicializar ADC
+			HAL_ADC_Start(&hadc1); //Inicializar ADC lectura de peso en envase de comida
 			if(HAL_ADC_PollForConversion(&hadc1,500)==HAL_OK){ //Lectura de valores
 				ADC_val=HAL_ADC_GetValue(&hadc1);
 				peso = ADC_val*(1000/255); // Escalar el valor al rango de lectura de 0-1000g
@@ -193,10 +226,19 @@ int main(void)
 				HAL_ADC_Stop(&hadc1);
 			}
 			if (llenar){ // Si el peso es menor a 200g abrir valvula de comida
+				//watchdog_comida();
 				__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,100);
 			}
 			else if (!llenar){ // Si el peso es mayor a 500g cerrar valvula de comida
 				__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,50);
+			}
+			llenar_agua=comprobar_nivel(nivel,llenar_agua);
+			if (llenar_agua){ // Si el nivel es menor al 10% abrir valvula de agua
+				//watchdog_agua();
+				__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,100);
+			}
+			else if (!llenar_agua){ // Si el nivel es mayor al 70% cerrar valvula de agua
+				__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,50);
 			}
 		}
 		if (inicializado){
