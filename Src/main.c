@@ -48,27 +48,29 @@
 ADC_HandleTypeDef hadc1;
 
 TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim6;
+TIM_HandleTypeDef htim14;
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-volatile _Bool flag =0;
-volatile _Bool llenar;
-volatile int peso; //peso medido 
-uint32_t ADC_val;
-int duty_agua;					
-int duty_comida;
+volatile _Bool start=0;
+volatile uint32_t ADC_val;
+volatile int peso;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_TIM3_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM1_Init(void);
-static void MX_TIM3_Init(void);
+static void MX_TIM2_Init(void);
+static void MX_TIM6_Init(void);
+static void MX_TIM14_Init(void);
                                     
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
-                                
                                 
 
 /* USER CODE BEGIN PFP */
@@ -80,65 +82,8 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		// Interrupcion que inicializa la maquina ON/OFF con el push button
 		if (GPIO_Pin==GPIO_PIN_0){ 
-			flag = !flag;
+			start = !start;
 		}
-}
-
-// Funcion que despliega segun un codigo de color el peso en gramos y retorna un bool que indica si hay que dejar de llenar
-// LED_ROJO peso < 200g Necesita llenar comida
-// LED_AMARILLO peso>=200g and peso<=500g Comida en estado aceptable
-// LED_VERDE peso < 500g El peso es adecuado dejar de llenar
-// 
-_Bool display(int peso){
-		_Bool flag_i=0;
-		if (peso<200){
-			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
-			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET);
-			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
-		}
-		else if(peso>=200 && peso<=500){
-			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
-			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);
-			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
-		}
-		else if (peso>500){
-			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
-			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET);
-			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET);
-			flag_i = 1;
-		}
-		return flag_i;
-}
-
-//Codig que inicializa perifericos
-void inicializar(){
-	HAL_ADC_Start(&hadc1); //encender ADC
-	//HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1); //encender servo 1
-	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1); //encender servo 2
-}
-
-// Codigo que se asegura de apagar el equipo y colocarlo en posicion inicial.
-void apagar(){
-	while (duty_agua>0){
-		duty_agua-=25;
-		htim1.Instance->CCR1=duty_agua; //vuelve la valvula de agua a posicion cerrada
-		HAL_Delay(500);
-	}
-	while (duty_comida>0){
-		duty_agua-=25;
-		htim3.Instance->CCR1=duty_agua; //vuelve la valvula de comida a posicion cerrada
-		HAL_Delay(500);
-	}
-	duty_agua = 0;
-	duty_comida = 0;
-	ADC_val = 0;
-	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET); //Apaga LED e indica que no esta encendido el aparato
-	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET); //Apaga LED de se necesita comida
-	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET); //Apaga LED de comida llena
-	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET); //Apaga LED de se necesita agua
-	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1); //apagar servo 1
-	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1); //apagar servo 2
-	HAL_ADC_Stop(&hadc1);//apagar ADC
 }
 /* USER CODE END 0 */
 
@@ -171,47 +116,40 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_TIM3_Init();
   MX_ADC1_Init();
   MX_TIM1_Init();
-  MX_TIM3_Init();
+  MX_TIM2_Init();
+  MX_TIM6_Init();
+  MX_TIM14_Init();
   /* USER CODE BEGIN 2 */
-	
-	
+HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1); //encender servo 2
   /* USER CODE END 2 */
+
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-		while (flag){ 			
-			inicializar();
-			// LED AZUL Funcionando
-			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_SET);
-			// lectura del ADC
-			if(HAL_ADC_PollForConversion(&hadc1,1000)==HAL_OK){
-				ADC_val=HAL_ADC_GetValue(&hadc1); //guarda el valor de lectura del ADC
-				peso = ADC_val*(1000/255); //guarda el valor en gramos del peso medido redondeo hacia unidad menor 
-				llenar=display(peso); //devuelve un valor para determinar si se debe seguir llenando la comida
-			}
-			if (llenar && duty_comida<=200){ //Se activa el servomotor que abre la valvula de comida
-//				htim3.Instance->CCR1+=50; 
-				duty_comida+=50;
-				__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,duty_comida);
-				HAL_Delay(1000);
-			}
-			while (!llenar && duty_comida>0){
-				duty_comida-=50;
-				//htim3.Instance->CCR1=duty_comida; //vuelve la valvula a posicion cerrada
-				__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,duty_comida);
-				HAL_Delay(1000);
-			}
-			HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
-			}
-		apagar();
-		/* USER CODE END WHILE */
-		
+
+  /* USER CODE END WHILE */
+
   /* USER CODE BEGIN 3 */
-}
-  
+		while(start){
+			HAL_ADC_Start(&hadc1); //Inicializar ADC
+			if(HAL_ADC_PollForConversion(&hadc1,500)==HAL_OK){ //Lectura de valores
+				ADC_val=HAL_ADC_GetValue(&hadc1);
+				peso = ADC_val*(1000/255); // Escalar el valor al rango de lectura de 0-1000g
+				HAL_ADC_Stop(&hadc1);
+			}
+			
+			if (peso<200){ // Si el peso es menor a 200g abrir valvula de comida
+				__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,100);
+			}
+			else if (peso>500){ // Si el peso es mayor a 500g cerrar valvula de comida
+				__HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_1,50);
+			}
+		}
+  }
   /* USER CODE END 3 */
 
 }
@@ -315,9 +253,9 @@ static void MX_TIM1_Init(void)
   TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig;
 
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 1600;
+  htim1.Init.Prescaler = 320;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 200;
+  htim1.Init.Period = 1000;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
@@ -333,7 +271,7 @@ static void MX_TIM1_Init(void)
   }
 
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 15;
+  sConfigOC.Pulse = 500;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
@@ -360,6 +298,38 @@ static void MX_TIM1_Init(void)
 
 }
 
+/* TIM2 init function */
+static void MX_TIM2_Init(void)
+{
+
+  TIM_ClockConfigTypeDef sClockSourceConfig;
+  TIM_MasterConfigTypeDef sMasterConfig;
+
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 16000-1;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 1000-1;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+}
+
 /* TIM3 init function */
 static void MX_TIM3_Init(void)
 {
@@ -368,9 +338,9 @@ static void MX_TIM3_Init(void)
   TIM_OC_InitTypeDef sConfigOC;
 
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 1600;
+  htim3.Init.Prescaler = 320;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 200;
+  htim3.Init.Period = 1000;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
   {
@@ -385,7 +355,7 @@ static void MX_TIM3_Init(void)
   }
 
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 15;
+  sConfigOC.Pulse = 500;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
@@ -394,6 +364,46 @@ static void MX_TIM3_Init(void)
   }
 
   HAL_TIM_MspPostInit(&htim3);
+
+}
+
+/* TIM6 init function */
+static void MX_TIM6_Init(void)
+{
+
+  TIM_MasterConfigTypeDef sMasterConfig;
+
+  htim6.Instance = TIM6;
+  htim6.Init.Prescaler = 0;
+  htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim6.Init.Period = 0;
+  if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim6, &sMasterConfig) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+}
+
+/* TIM14 init function */
+static void MX_TIM14_Init(void)
+{
+
+  htim14.Instance = TIM14;
+  htim14.Init.Prescaler = 16000-1;
+  htim14.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim14.Init.Period = 5000;
+  htim14.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  if (HAL_TIM_Base_Init(&htim14) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
 
 }
 
@@ -412,33 +422,64 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOE_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, FALTA_COMIDA_Pin|FALTA_AGUA_Pin|LED_FUNCIONAMIENTO_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOE, FALTA_COMIDA_Pin|COMIDA_LLENA_Pin|FALTA_AGUA_Pin|AGUA_LLENA_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : USER_BOTTON_Pin SENSOR_VACIO_Pin SENSOR_LLENO_Pin */
-  GPIO_InitStruct.Pin = USER_BOTTON_Pin|SENSOR_VACIO_Pin|SENSOR_LLENO_Pin;
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, display_A_Pin|display_B_Pin|display_C_Pin|display_D_Pin 
+                          |display_E_Pin|display_F_Pin|display_G_Pin|display_DP_Pin 
+                          |D1_Pin|D2_Pin|D3_Pin|D4_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOD, LED_PARO_Pin|GPIO_PIN_14|LED_FUNCIONAMIENTO_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : USER_BOTTON_Pin */
+  GPIO_InitStruct.Pin = USER_BOTTON_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(USER_BOTTON_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : FALTA_COMIDA_Pin FALTA_AGUA_Pin LED_FUNCIONAMIENTO_Pin */
-  GPIO_InitStruct.Pin = FALTA_COMIDA_Pin|FALTA_AGUA_Pin|LED_FUNCIONAMIENTO_Pin;
+  /*Configure GPIO pins : FALTA_COMIDA_Pin COMIDA_LLENA_Pin FALTA_AGUA_Pin AGUA_LLENA_Pin */
+  GPIO_InitStruct.Pin = FALTA_COMIDA_Pin|COMIDA_LLENA_Pin|FALTA_AGUA_Pin|AGUA_LLENA_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : display_A_Pin display_B_Pin display_C_Pin display_D_Pin 
+                           display_E_Pin display_F_Pin display_G_Pin display_DP_Pin 
+                           D1_Pin D2_Pin D3_Pin D4_Pin */
+  GPIO_InitStruct.Pin = display_A_Pin|display_B_Pin|display_C_Pin|display_D_Pin 
+                          |display_E_Pin|display_F_Pin|display_G_Pin|display_DP_Pin 
+                          |D1_Pin|D2_Pin|D3_Pin|D4_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : LED_PARO_Pin PD14 LED_FUNCIONAMIENTO_Pin */
+  GPIO_InitStruct.Pin = LED_PARO_Pin|GPIO_PIN_14|LED_FUNCIONAMIENTO_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : SENSOR_LLENO_Pin SENSOR_VACIO_Pin */
+  GPIO_InitStruct.Pin = SENSOR_LLENO_Pin|SENSOR_VACIO_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI0_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI1_IRQn, 1, 0);
-  HAL_NVIC_EnableIRQ(EXTI1_IRQn);
-
-  HAL_NVIC_SetPriority(EXTI2_IRQn, 1, 0);
-  HAL_NVIC_EnableIRQ(EXTI2_IRQn);
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
 }
 
